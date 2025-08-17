@@ -510,6 +510,8 @@ spec:
           value: "bar"
         - name: pgTableName
           value: "products"
+        - name: ALLOYDB_CLUSTER_NAME
+          value: "testpsql"
         readinessProbe:
           grpc:
             port: 3550
