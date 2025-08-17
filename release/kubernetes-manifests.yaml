@@ -505,7 +505,7 @@ spec:
         - name: pgHost
           value: "acid-minimal-cluster-test-repl"
         - name: pgPort
-          value: 5432
+          value: "5432"
         - name: pgDatabaseName
           value: "bar"
         - name: pgTableName

@@ -91,7 +91,7 @@ func loadCatalogFromAlloyDB(catalog *pb.ListProductsResponse) error {
 	pgTableName := os.Getenv("pgTableName")
 
 	dsn := fmt.Sprintf(
-		"user=%s password=%s host=%s port=%d dbname=%s sslmode=disable",
+		"user=%s password=%s host=%s port=%s dbname=%s sslmode=disable",
 		pgUser, pgPassword, pgHost, pgPort, pgDatabaseName,
 	)
 
