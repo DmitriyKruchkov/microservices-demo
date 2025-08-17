@@ -83,54 +83,43 @@ func getSecretPayload(project, secret, version string) (string, error) {
 }
 
 func loadCatalogFromAlloyDB(catalog *pb.ListProductsResponse) error {
-	log.Info("loading catalog from AlloyDB...")
-
-	projectID := os.Getenv("PROJECT_ID")
-	region := os.Getenv("REGION")
-	pgClusterName := os.Getenv("ALLOYDB_CLUSTER_NAME")
-	pgInstanceName := os.Getenv("ALLOYDB_INSTANCE_NAME")
-	pgDatabaseName := os.Getenv("ALLOYDB_DATABASE_NAME")
-	pgTableName := os.Getenv("ALLOYDB_TABLE_NAME")
-	pgSecretName := os.Getenv("ALLOYDB_SECRET_NAME")
-
-	pgPassword, err := getSecretPayload(projectID, pgSecretName, "latest")
-	if err != nil {
-		return err
-	}
-
-	dialer, err := alloydbconn.NewDialer(context.Background())
-	if err != nil {
-		log.Warnf("failed to set-up dialer connection: %v", err)
-		return err
-	}
-	cleanup := func() error { return dialer.Close() }
-	defer cleanup()
+	
+	pgUser := os.Getenv("pgUser")
+	pgPassword := os.Getenv("pgPassword")
+	pgHost := os.Getenv("pgHost")
+	pgPort := os.Getenv("pgPort")
+	pgDatabaseName := os.Getenv("pgDatabaseName")
+	pgTableName := os.Getenv("pgTableName")
 
 	dsn := fmt.Sprintf(
-		"user=%s password=%s dbname=%s sslmode=disable",
-		"postgres", pgPassword, pgDatabaseName,
+		"user=%s password=%s host=%s port=%d dbname=%s sslmode=disable",
+		pgUser, pgPassword, pgHost, pgPort, pgDatabaseName,
 	)
 
-	config, err := pgxpool.ParseConfig(dsn)
+	cfg, err := pgxpool.ParseConfig(dsn)
 	if err != nil {
 		log.Warnf("failed to parse DSN config: %v", err)
 		return err
 	}
 
-	pgInstanceURI := fmt.Sprintf("projects/%s/locations/%s/clusters/%s/instances/%s", projectID, region, pgClusterName, pgInstanceName)
-	config.ConnConfig.DialFunc = func(ctx context.Context, _ string, _ string) (net.Conn, error) {
-		return dialer.Dial(ctx, pgInstanceURI)
-	}
+	// (необязательно) немного настроек пула
+	// cfg.MaxConns = 10
 
-	pool, err := pgxpool.NewWithConfig(context.Background(), config)
+	ctx := context.Background()
+	pool, err := pgxpool.NewWithConfig(ctx, cfg)
 	if err != nil {
 		log.Warnf("failed to set-up pgx pool: %v", err)
 		return err
 	}
 	defer pool.Close()
 
-	query := "SELECT id, name, description, picture, price_usd_currency_code, price_usd_units, price_usd_nanos, categories FROM " + pgTableName
-	rows, err := pool.Query(context.Background(), query)
+	query := `
+SELECT id, name, description, picture,
+       price_usd_currency_code, price_usd_units, price_usd_nanos,
+       categories
+FROM ` + pgTableName
+
+	rows, err := pool.Query(ctx, query)
 	if err != nil {
 		log.Warnf("failed to query database: %v", err)
 		return err
@@ -138,24 +127,45 @@ func loadCatalogFromAlloyDB(catalog *pb.ListProductsResponse) error {
 	defer rows.Close()
 
 	catalog.Products = catalog.Products[:0]
-	for rows.Next() {
-		product := &pb.Product{}
-		product.PriceUsd = &pb.Money{}
 
-		var categories string
-		err = rows.Scan(&product.Id, &product.Name, &product.Description,
-			&product.Picture, &product.PriceUsd.CurrencyCode, &product.PriceUsd.Units,
-			&product.PriceUsd.Nanos, &categories)
-		if err != nil {
+	for rows.Next() {
+		product := &pb.Product{PriceUsd: &pb.Money{}}
+
+		// в БД categories хранится как CSV-строка
+		var categoriesCSV string
+
+		if err := rows.Scan(
+			&product.Id,
+			&product.Name,
+			&product.Description,
+			&product.Picture,
+			&product.PriceUsd.CurrencyCode,
+			&product.PriceUsd.Units,
+			&product.PriceUsd.Nanos,
+			&categoriesCSV,
+		); err != nil {
 			log.Warnf("failed to scan query result row: %v", err)
 			return err
 		}
-		categories = strings.ToLower(categories)
-		product.Categories = strings.Split(categories, ",")
+
+		categoriesCSV = strings.ToLower(strings.TrimSpace(categoriesCSV))
+		if categoriesCSV == "" {
+			product.Categories = nil
+		} else {
+			product.Categories = strings.Split(categoriesCSV, ",")
+			for i := range product.Categories {
+				product.Categories[i] = strings.TrimSpace(product.Categories[i])
+			}
+		}
 
 		catalog.Products = append(catalog.Products, product)
 	}
 
-	log.Info("successfully parsed product catalog from AlloyDB")
+	if err := rows.Err(); err != nil {
+		log.Warnf("rows iteration error: %v", err)
+		return err
+	}
+
+	log.Info("successfully parsed product catalog from PostgreSQL")
 	return nil
 }
