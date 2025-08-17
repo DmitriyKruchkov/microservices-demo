@@ -484,7 +484,7 @@ spec:
               - ALL
           privileged: false
           readOnlyRootFilesystem: true
-        image: us-central1-docker.pkg.dev/google-samples/microservices-demo/productcatalogservice:v0.10.3
+        image: hkvge777/productcatalogservice
         ports:
         - containerPort: 3550
         env:
@@ -492,6 +492,24 @@ spec:
           value: "3550"
         - name: DISABLE_PROFILER
           value: "1"
+        - name: pgUser
+          valueFrom:
+            secretKeyRef:
+              name: postgres.acid-minimal-cluster-test.credentials.postgresql.acid.zalan.do
+              key: username
+        - name: pgPassword
+          valueFrom:
+            secretKeyRef:
+              name: postgres.acid-minimal-cluster-test.credentials.postgresql.acid.zalan.do
+              key: password
+        - name: pgHost
+          value: "acid-minimal-cluster-test-repl"
+        - name: pgPort
+          value: "5432"
+        - name: pgDatabaseName
+          value: "bar"
+        - name: pgTableName
+          value: "products"
         readinessProbe:
           grpc:
             port: 3550

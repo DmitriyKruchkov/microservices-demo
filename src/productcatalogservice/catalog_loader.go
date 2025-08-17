@@ -18,11 +18,10 @@ import (
 	"bytes"
 	"context"
 	"fmt"
-	"net"
+
 	"os"
 	"strings"
 
-	"cloud.google.com/go/alloydbconn"
 	secretmanager "cloud.google.com/go/secretmanager/apiv1"
 	"cloud.google.com/go/secretmanager/apiv1/secretmanagerpb"
 	pb "github.com/GoogleCloudPlatform/microservices-demo/src/productcatalogservice/genproto"
